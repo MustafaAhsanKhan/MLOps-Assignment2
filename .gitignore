@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Local secrets and run artifacts
+.env
+report.json
+*.trace.jsonl
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
