@@ -4,6 +4,7 @@ The agent loop only depends on `send()`, so any object with the same method (e.g
 fake in the tests) can stand in for the real model.
 """
 
+import sys
 import time
 from dataclasses import dataclass, field
 
@@ -12,10 +13,15 @@ from google import genai
 from google.genai import errors, types
 
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+OVERLOADED_STATUS = {429, 503}  # model busy/quota: worth switching to the fallback model
 
 
 class LLMError(Exception):
     """Unrecoverable model/API failure."""
+
+    def __init__(self, message: str, code: int | None = None):
+        super().__init__(message)
+        self.code = code
 
 
 @dataclass
@@ -34,9 +40,12 @@ class ModelTurn:
 
 class GeminiLLM:
     def __init__(self, api_key: str, model: str, system_prompt: str, tool_schemas: list[dict],
-                 timeout_s: int = 180, max_retries: int = 5):
-        self.client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=timeout_s * 1000))
+                 fallback_model: str | None = None, timeout_s: int = 180, max_retries: int = 8):
+        # Retries are handled below (with model fallback), so disable the SDK's own retry layer.
+        self.client = genai.Client(api_key=api_key, http_options=types.HttpOptions(
+            timeout=timeout_s * 1000, retry_options=types.HttpRetryOptions(attempts=1)))
         self.model = model
+        self.fallback_model = fallback_model if fallback_model != model else None
         self.max_retries = max_retries
         self.history: list[types.Content] = []
         self.config = types.GenerateContentConfig(
@@ -82,15 +91,28 @@ class GeminiLLM:
         return turn
 
     def _generate(self):
+        while True:
+            try:
+                return self._generate_with_retries()
+            except LLMError as e:
+                if not (self.fallback_model and e.code in OVERLOADED_STATUS):
+                    raise
+                print(f"warning: {self.model} unavailable ({e.code}); switching to {self.fallback_model}",
+                      file=sys.stderr)
+                self.model, self.fallback_model = self.fallback_model, None
+
+    def _generate_with_retries(self):
         for attempt in range(self.max_retries + 1):
             try:
                 return self.client.models.generate_content(model=self.model, contents=self.history,
                                                            config=self.config)
             except errors.APIError as e:
-                if e.code not in RETRYABLE_STATUS or attempt == self.max_retries:
-                    raise LLMError(f"Gemini API error {e.code}: {e.message}") from e
+                # With a fallback available, give up on a busy/over-quota model quickly.
+                limit = 2 if self.fallback_model and e.code in OVERLOADED_STATUS else self.max_retries
+                if e.code not in RETRYABLE_STATUS or attempt >= limit:
+                    raise LLMError(f"Gemini API error {e.code} ({self.model}): {e.message}", e.code) from e
             except httpx.TransportError as e:
                 if attempt == self.max_retries:
                     raise LLMError(f"Network error talking to Gemini: {e}") from e
-            time.sleep(min(2 ** attempt * 2, 60))
+            time.sleep(min(2 ** attempt * 2, 30))
         raise LLMError("unreachable")

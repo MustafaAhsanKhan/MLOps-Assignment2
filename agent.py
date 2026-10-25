@@ -20,6 +20,7 @@ from report import build_report
 from tools import RepoTools
 
 DEFAULT_MODEL = "gemini-3.8-flash"
+DEFAULT_FALLBACK_MODEL = "gemini-3.5-flash-lite"
 CLONE_TIMEOUT = 300
 GITHUB_URL = re.compile(r"^https?://(?:www\.)?github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$")
 
@@ -100,7 +101,8 @@ def main(argv=None) -> int:
             raise FatalError("GEMINI_API_KEY is not set (copy .env.example to .env and add your key)", EXIT_USAGE)
         model = args.model or os.environ.get("GEMINI_MODEL") or DEFAULT_MODEL
         trace_path = args.trace or args.output.with_suffix(".trace.jsonl")
-        llm = GeminiLLM(api_key, model, SYSTEM_PROMPT, ALL_TOOL_SCHEMAS)
+        fallback = os.environ.get("GEMINI_FALLBACK_MODEL", DEFAULT_FALLBACK_MODEL) or None
+        llm = GeminiLLM(api_key, model, SYSTEM_PROMPT, ALL_TOOL_SCHEMAS, fallback_model=fallback)
 
         with tempfile.TemporaryDirectory(prefix="repo-audit-") as tmp:
             repo_path = Path(tmp) / "repo"
