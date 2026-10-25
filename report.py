@@ -45,7 +45,7 @@ def validate_violation(args: dict, tools: RepoTools) -> dict:
         if file not in set(tools.tracked_files()):
             raise InvalidViolation(
                 f"'{file}' is not a tracked file in this repository. Use an exact path from list_files; "
-                "for something that is missing, omit file and line.")
+                "for something that is missing or only in git history, omit file and line.")
         if line is not None:
             count = tools.line_count(file) or 0
             if not 1 <= line <= count:

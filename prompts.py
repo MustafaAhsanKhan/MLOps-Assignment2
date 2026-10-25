@@ -15,7 +15,8 @@ HOW TO WORK
    lockfiles, .gitignore, CI workflows (.github/workflows/*), Dockerfiles, config/settings files,
    tests, and source files that look risky. Use search_code to sweep for patterns (credentials,
    absolute paths, debug flags, `|| true`, `continue-on-error`, `pull_request_target`, `${{ github.event`,
-   `permissions:`, `curl | bash`, etc.). Use git_log for history (e.g. secrets added then "removed").
+   `permissions:`, `curl | bash`, etc.). Check history too: git_log(deleted_only=true) reveals files that
+   were committed and later deleted (removed .env/keys stay in history); confirm with git_show.
    Use check_gitignore to verify whether sensitive/generated paths are ignored or tracked.
    Use run_ruff only for Python code-quality questions.
 3. Follow up: when a result raises a question, call another tool to confirm or refute it.
@@ -40,6 +41,11 @@ EVIDENCE RULES (critical for precision)
 - Secret values are shown as [REDACTED len=N]; a redacted literal in source still means a hardcoded secret.
   NEVER reproduce secret values in your report.
 - A healthy, small repository may have few or zero violations. Do not pad the report.
+- Findings that exist only in git history (file deleted since) have no current file: omit file/line and
+  name the commit and path in `evidence`.
+- Distinct mechanisms are distinct findings, even in the same file. E.g. in one workflow, an untrusted
+  PR-head checkout under pull_request_target, `${{ github.event.* }}` interpolated into `run:` (script
+  injection), and `permissions: write-all` are three separate problems.
 - One violation per root cause: do not report the same problem per line or per file when it is one
   issue (e.g. "all dependencies unpinned" is one finding on the manifest). Do not report the same
   defect under two rule ids.

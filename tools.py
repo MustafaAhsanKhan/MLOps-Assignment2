@@ -19,6 +19,7 @@ MAX_FILE_LINES = 400
 MAX_LIST_FILES = 500
 CMD_TIMEOUT = 60
 MAX_SEARCH_BYTES = 1_000_000
+COMMIT_RE = re.compile(r"^[0-9a-fA-F]{4,40}([~^][0-9]*)?$")
 # Ignore user/system git config so nothing outside our own clone can influence git.
 GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
 
@@ -140,14 +141,27 @@ class RepoTools:
             return f"No matches for /{pattern}/" + (f" in '{path_glob}'" if path_glob else "")
         return _truncate(redact("\n".join(hits)))
 
-    def git_log(self, max_count: int = 20, path: str = "") -> str:
+    def git_log(self, max_count: int = 20, path: str = "", deleted_only: bool = False) -> str:
         n = max(1, min(int(max_count), 100))
-        args = ["log", f"--max-count={n}", "--date=short", "--stat=120",
-                "--format=commit %h  %ad  %an%n    %s"]
+        args = ["log", f"--max-count={n}", "--date=short", "--format=commit %h  %ad  %an%n    %s"]
+        # Deleted files are where removed secrets/artifacts hide: list them by name and status.
+        args += ["--diff-filter=D", "--name-status"] if deleted_only else ["--stat=120"]
         if path:
             args += ["--", path]
         out = self._git(*args)
-        return _truncate(redact(out)) or "No commits found."
+        return _truncate(redact(out)) or ("No commits deleting files." if deleted_only else "No commits found.")
+
+    def git_show(self, commit: str, path: str) -> str:
+        """Show a file as it existed at a past commit (e.g. a file that was later deleted)."""
+        if not COMMIT_RE.match(commit or ""):
+            raise ToolError("commit must be a hex commit hash, optionally followed by ^ or ~N")
+        self.resolve(path)  # rejects paths escaping the repository
+        proc = self._run_git("show", f"{commit}:{path.lstrip('/')}")
+        if proc.returncode != 0:
+            raise ToolError(proc.stderr.strip()[:300] or "git show failed")
+        lines = proc.stdout.splitlines()[:MAX_FILE_LINES]
+        body = "\n".join(f"{i:>5}| {line}" for i, line in enumerate(lines, 1))
+        return _truncate(redact(f"{path} at commit {commit}:\n{body}"))
 
     def check_gitignore(self, paths: list[str]) -> str:
         """Report, for each path, whether .gitignore rules would ignore it and whether it is tracked."""
@@ -229,10 +243,22 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "git_log",
-        "description": "Show recent commits with changed-file stats. Optionally only commits touching a path.",
+        "description": ("Show recent commits with changed-file stats, optionally only those touching a path. "
+                        "deleted_only=true lists commits that deleted files (e.g. secrets removed later)."),
         "parameters": {
             "type": "object",
-            "properties": {"max_count": {"type": "integer"}, "path": {"type": "string"}},
+            "properties": {"max_count": {"type": "integer"}, "path": {"type": "string"},
+                           "deleted_only": {"type": "boolean"}},
+        },
+    },
+    {
+        "name": "git_show",
+        "description": ("Show a file's content at a past commit (use the parent, e.g. 'abc123^', for a file "
+                        "deleted in commit abc123). Secrets are redacted."),
+        "parameters": {
+            "type": "object",
+            "properties": {"commit": {"type": "string"}, "path": {"type": "string"}},
+            "required": ["commit", "path"],
         },
     },
     {

@@ -75,6 +75,25 @@ def test_git_log(tools):
     assert "Initial commit" in only and "Call main" not in only
 
 
+def test_git_log_deleted_and_git_show(sample_repo):
+    import subprocess as sp
+    (sample_repo / "old.key").write_text("token = 'abc123def456ghi789'\n")
+    sp.run(["git", "-C", str(sample_repo), "add", "old.key"], check=True)
+    sp.run(["git", "-C", str(sample_repo), "commit", "-qm", "add key"], check=True)
+    sp.run(["git", "-C", str(sample_repo), "rm", "-q", "old.key"], check=True)
+    sp.run(["git", "-C", str(sample_repo), "commit", "-qm", "remove key"], check=True)
+    tools = RepoTools(sample_repo)
+    out = tools.git_log(deleted_only=True)
+    assert "remove key" in out and "D\told.key" in out and "Call main" not in out
+    commit = out.split()[1]
+    shown = tools.git_show(f"{commit}^", "old.key")
+    assert "token" in shown and "abc123def456" not in shown
+    with pytest.raises(ToolError):
+        tools.git_show("--output=/tmp/x", "old.key")
+    with pytest.raises(ToolError):
+        tools.git_show(commit, "old.key")  # deleted in that commit
+
+
 def test_check_gitignore(tools):
     out = tools.check_gitignore([".env", "__pycache__/x.pyc"])
     assert ".env: NOT ignored; tracked" in out
@@ -90,7 +109,7 @@ def test_run_ruff(tools):
 def test_tools_leave_repo_unchanged(tools, sample_repo):
     before = _status(sample_repo)
     tools.list_files(); tools.read_file("README.md"); tools.search_code("x")
-    tools.git_log(); tools.check_gitignore([".env"]); tools.run_ruff()
+    tools.git_log(); tools.git_log(deleted_only=True); tools.check_gitignore([".env"]); tools.run_ruff()
     assert _status(sample_repo) == before == ""
 
 

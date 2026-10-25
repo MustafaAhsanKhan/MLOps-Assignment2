@@ -154,7 +154,8 @@ tests/          pytest suite (tools on a throwaway git repo, agent loop driven b
 | `list_files(subdir?)` | Tracked files (`git ls-files`), optionally under a directory |
 | `read_file(path, start_line?, end_line?)` | File contents with line numbers (400 lines per call), binary detection |
 | `search_code(pattern, path_glob?, ignore_case?)` | Python-regex search across tracked text files, `path:line:text` hits |
-| `git_log(max_count?, path?)` | Recent commits with changed-file stats, optionally for one path |
+| `git_log(max_count?, path?, deleted_only?)` | Recent commits with changed-file stats, optionally for one path; `deleted_only` lists files deleted in each commit |
+| `git_show(commit, path)` | A file's content at a past commit (to confirm secrets removed from the tree but still in history) |
 | `check_gitignore(paths)` | Whether `.gitignore` rules ignore each path and whether it is tracked |
 | `run_ruff(path?)` | Static lint statistics with ruff (ruff parses files, it does not run them) |
 | `report_violation(...)` | Submit a confirmed finding (validated, see above) |
