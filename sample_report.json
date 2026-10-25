@@ -1,0 +1,45 @@
+{
+  "repository": "https://github.com/miguelgrinberg/microblog",
+  "violations": [
+    {
+      "rule_id": "CI-001",
+      "category": "ci",
+      "severity": "high",
+      "file": null,
+      "line": null,
+      "description": "Missing CI workflow configuration (no automated workflows or test execution in CI).",
+      "evidence": "No GitHub Actions workflows or CI configuration files exist in the repository.",
+      "recommendation": "Add a GitHub Actions workflow under .github/workflows/ to run tests and linters on pull requests and pushes."
+    },
+    {
+      "rule_id": "CFG-001",
+      "category": "configuration",
+      "severity": "medium",
+      "file": "deployment/supervisor/microblog-tasks.conf",
+      "line": 2,
+      "description": "Committed deployment configuration files contain hardcoded absolute home paths (/home/ubuntu/microblog).",
+      "evidence": "deployment/nginx/microblog:16: ssl_certificate /home/ubuntu/microblog/certs/cert.pem;\ndeployment/supervisor/microblog-tasks.conf:2: command=/home/ubuntu/microblog/venv/bin/rq worker microblog-tasks",
+      "recommendation": "Parameterize paths in configuration templates or use relative/environment-based path resolution."
+    },
+    {
+      "rule_id": "HYG-002",
+      "category": "repository_hygiene",
+      "severity": "medium",
+      "file": ".gitignore",
+      "line": null,
+      "description": ".gitignore does not ignore .env files used by python-dotenv.",
+      "evidence": ".env is not matched by .gitignore rules (config.py loads .env via dotenv).",
+      "recommendation": "Add .env and .env.* to .gitignore."
+    },
+    {
+      "rule_id": "CQ-001",
+      "category": "code_quality",
+      "severity": "low",
+      "file": null,
+      "line": null,
+      "description": "No code linter or formatter (such as flake8, black, ruff, or pylint) is configured anywhere in the project.",
+      "evidence": "No linter configuration files or pre-commit hooks are present.",
+      "recommendation": "Configure ruff or flake8/black in pyproject.toml or setup.cfg, and run it in CI."
+    }
+  ]
+}

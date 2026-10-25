@@ -4,7 +4,8 @@ An AI agent that clones a public GitHub repository, investigates it with inspect
 **the LLM chooses step by step**, and writes a machine-readable JSON report of DevOps
 best-practice violations with evidence, severity and remediation.
 
-- LLM: Google Gemini (`gemini-3.8-flash` by default) through the official `google-genai` SDK
+- LLM: Google Gemini (`gemini-3.8-flash` by default, automatic fallback to `gemini-3.5-flash-lite` when it is
+  overloaded or out of quota) through the official `google-genai` SDK
 - No agent frameworks (no LangChain / LangGraph / n8n): the reasoning loop, tool dispatch and
   control flow are plain Python in [`agent_loop.py`](agent_loop.py)
 - The inspected repository is never modified and its code is never executed
@@ -40,6 +41,7 @@ cp .env.example .env
 |---|---|---|
 | `GEMINI_API_KEY` | yes | Gemini API key (`GOOGLE_API_KEY` is accepted as a fallback) |
 | `GEMINI_MODEL` | no | Model id, default `gemini-3.8-flash` |
+| `GEMINI_FALLBACK_MODEL` | no | Used automatically if the main model stays overloaded or over quota (HTTP 429/503); default `gemini-3.5-flash-lite`, empty disables it |
 
 Exporting the variables in the shell works too (`export GEMINI_API_KEY=...`); `.env` is optional.
 `.env` is git-ignored, so keys are never committed.
@@ -197,7 +199,8 @@ remote branch protection, and to report one finding per root cause.
 - Secrets are redacted before tool output reaches the model, the trace or the report (common token formats,
   private keys, URL credentials, `password/secret/token/api_key = "..."` literals).
 - Timeouts on cloning (300 s), git/ruff commands (60 s) and Gemini calls (180 s); Gemini rate-limit and
-  server errors are retried with exponential backoff.
+  server errors are retried with exponential backoff, and a persistently overloaded model is replaced by the
+  fallback model for the rest of the run (a warning is printed).
 
 ---
 
@@ -217,6 +220,27 @@ The tests need no API key and no network:
   writing, secret-free output, URL validation and exit codes.
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs ruff and pytest on every push and pull request.
+
+### Live evaluation
+
+Before submission the agent was run against three purpose-built repositories that mirror the hidden-test
+categories (none of their content is referenced anywhere in the agent):
+
+| Repository | Planted defects | Reported | Correct | Missed |
+|---|---|---|---|---|
+| Obvious (hardcoded Stripe key, tracked `.env`, no tests/CI/README/.gitignore, debug mode, absolute path, bare except, unpinned deps, tracked `.DS_Store`/`.pyc`) | 11 | 11 | 11 | 0 |
+| Subtle (`pull_request_target` + PR-head checkout, script injection, `write-all`, `continue-on-error` lint, CI on wrong branch, deploy on any push, `@main` action, committed IDE settings, AWS key deleted but still in history) | 9 | 10 | 10* | 0 |
+| Healthy (uv + lockfile, ruff, tests, least-privilege CI that tests and builds) | 0 | 0 | - | - |
+
+\* the extra finding was a placeholder `assert True` test, a genuine defect that had not been counted.
+Results vary slightly between runs because the model's choices are not deterministic.
+
+`sample_report.json` / `sample_trace.jsonl` are an unedited run against
+[miguelgrinberg/microblog](https://github.com/miguelgrinberg/microblog):
+
+```bash
+python agent.py --repo https://github.com/miguelgrinberg/microblog --output sample_report.json --trace sample_trace.jsonl
+```
 
 ## 8. Limitations
 
