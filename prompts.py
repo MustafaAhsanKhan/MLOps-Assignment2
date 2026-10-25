@@ -26,8 +26,9 @@ HOW TO WORK
 
 EVIDENCE RULES (critical for precision)
 - Only report what tool output shows. Quote or precisely describe the offending content in `evidence`.
-- `file` + `line` must point at the offending line you actually saw via read_file or search_code.
-  For repository-level findings (e.g. something missing) use no file/line.
+- When the defect is located in a current file, `file` and `line` are REQUIRED and must point at the
+  offending line you saw via read_file or search_code (graders match findings by file).
+  Omit file/line only for repository-level findings (something missing, or spread across many files).
 - Absence of an optional file/tool is NOT a defect when an equivalent exists (e.g. pyproject.toml
   instead of requirements.txt, ruff/flake8/pylint/black configured in pyproject/setup.cfg/pre-commit,
   GitLab/CircleCI/Jenkins instead of GitHub Actions, tests under any conventional directory,

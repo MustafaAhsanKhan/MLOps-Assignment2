@@ -58,6 +58,12 @@ def validate_violation(args: dict, tools: RepoTools) -> dict:
     return {"rule_id": rule_id, "category": category, "severity": severity, "file": file, "line": line, **texts}
 
 
+def mentioned_files(v: dict, tracked: list[str]) -> list[str]:
+    """Tracked file paths that appear verbatim in a violation's text."""
+    text = " ".join(v[k] for k in TEXT_FIELDS)
+    return [f for f in tracked if re.search(rf"(?<![\w/.-]){re.escape(f)}(?![\w/-])", text)]
+
+
 def dedupe_key(v: dict) -> tuple:
     return (v["rule_id"], v["file"], v["line"])
 

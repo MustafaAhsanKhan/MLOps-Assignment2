@@ -159,3 +159,12 @@ def test_missing_api_key_exits_nonzero(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(agent, "load_dotenv", lambda: None)
     code = agent.main(["--repo", "https://github.com/o/r", "--output", str(tmp_path / "r.json")])
     assert code == agent.EXIT_USAGE and "GEMINI_API_KEY" in capsys.readouterr().err
+
+
+def test_fileless_finding_naming_a_tracked_file_is_nudged_once(sample_repo):
+    finding = {**SECRET_FINDING, "file": None, "line": None, "evidence": "app/config.py assigns a literal key"}
+    llm = FakeLLM([[("report_violation", finding)], [("report_violation", finding)]])
+    violations = Auditor(llm, RepoTools(sample_repo)).run("u")
+    assert "app/config.py" in results_of(llm, 1)["report_violation"]["error"]
+    assert results_of(llm, 2)["report_violation"] == {"output": "accepted as V1"}
+    assert len(violations) == 1

@@ -11,7 +11,7 @@ from collections.abc import Callable
 from llm import ModelTurn, ToolCall
 from prompts import INITIAL_MESSAGE, REVIEW_MESSAGE
 from redact import redact
-from report import CATEGORIES, SEVERITIES, InvalidViolation, dedupe_key, validate_violation
+from report import CATEGORIES, SEVERITIES, InvalidViolation, dedupe_key, mentioned_files, validate_violation
 from tools import TOOL_SCHEMAS, RepoTools, ToolError
 
 AGENT_TOOL_SCHEMAS = [
@@ -65,6 +65,7 @@ class Auditor:
         self.trace = trace or (lambda event: None)
         self.violations: dict[str, dict] = {}
         self._next_id = 1
+        self._nudged: set[tuple] = set()
         self.reviewed = False
         self.finished = False
         self.steps_used = 0
@@ -130,6 +131,13 @@ class Auditor:
         for vid, existing in self.violations.items():
             if dedupe_key(existing) == dedupe_key(v):
                 return {"error": f"duplicate of {vid}; not recorded"}
+        # Soft check: a file-less finding that names a tracked file probably should point at it.
+        named = mentioned_files(v, self.tools.tracked_files()) if v["file"] is None else []
+        if named and dedupe_key(v) not in self._nudged:
+            self._nudged.add(dedupe_key(v))
+            return {"error": f"not recorded yet: the finding mentions tracked file(s) {named[:3]}. Set file (and the "
+                             "offending line) if it is located there; if it truly spans several files or is "
+                             "repository-level, resubmit unchanged and it will be accepted."}
         vid = f"V{self._next_id}"
         self._next_id += 1
         self.violations[vid] = v
